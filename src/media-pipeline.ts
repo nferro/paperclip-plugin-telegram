@@ -3,13 +3,15 @@ import { sendMessage, escapeMarkdownV2, sendChatAction } from "./telegram-api.js
 import { METRIC_NAMES } from "./constants.js";
 import { getSessions, wakeAgentWithIssue } from "./acp-bridge.js";
 import { resolveMappedProjectIdForTopic } from "./topic-projects.js";
+import { resolveSecretRef } from "./runtime-token.js";
+import type { SecretRefValue } from "./types.js";
 
 const TELEGRAM_API = "https://api.telegram.org";
 
 type MediaConfig = {
   briefAgentId: string;
   briefAgentChatIds: string[];
-  transcriptionApiKeyRef: string;
+  transcriptionApiKeyRef: SecretRefValue;
   publicUrl?: string;
 };
 
@@ -59,7 +61,7 @@ export async function handleMediaMessage(
   // Transcribe audio/voice if applicable
   if (isAudio && config.transcriptionApiKeyRef) {
     try {
-      const transcription = await transcribeAudio(ctx, token, fileId, config.transcriptionApiKeyRef);
+      const transcription = await transcribeAudio(ctx, token, fileId, config.transcriptionApiKeyRef, companyId);
       if (transcription) {
         textContent = transcription;
 
@@ -174,7 +176,8 @@ async function transcribeAudio(
   ctx: PluginContext,
   botToken: string,
   fileId: string,
-  transcriptionApiKeyRef: string,
+  transcriptionApiKeyRef: SecretRefValue,
+  companyId: string,
 ): Promise<string | null> {
   // 1. Get file path from Telegram (JSON response — ctx.http.fetch works fine for this)
   const fileRes = await ctx.http.fetch(
@@ -193,7 +196,7 @@ async function transcribeAudio(
   const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
 
   // 3. Resolve the OpenAI API key from Paperclip secrets
-  const apiKey = await ctx.secrets.resolve(transcriptionApiKeyRef);
+  const apiKey = await resolveSecretRef(ctx, transcriptionApiKeyRef, companyId, "transcriptionApiKeyRef");
 
   // 4. Build multipart form data manually (native FormData + Blob works in Node 18+)
   const formData = new FormData();

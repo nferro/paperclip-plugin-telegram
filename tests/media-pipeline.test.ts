@@ -67,10 +67,12 @@ function mockCtx(): PluginContext {
   } as unknown as PluginContext;
 }
 
+const TRANSCRIPTION_SECRET_ID = "12f7ed4a-1234-4d0c-9abc-bd58d44d15e1";
+
 const defaultConfig = {
   briefAgentId: "brief-agent",
   briefAgentChatIds: ["intake-chat"],
-  transcriptionApiKeyRef: "openai-key",
+  transcriptionApiKeyRef: TRANSCRIPTION_SECRET_ID,
 };
 
 beforeEach(() => {
@@ -184,6 +186,22 @@ describe("Audio type detection", () => {
 
     // Should show transcription preview
     expect(sentMessages.some(m => m.text.includes("Transcription"))).toBe(true);
+  });
+
+  it("resolves the transcription key as a company-scoped secret_ref binding", async () => {
+    const ctx = mockCtx();
+
+    await handleMediaMessage(ctx, "token", {
+      message_id: 1,
+      chat: { id: 123 },
+      voice: { file_id: "voice-1", duration: 5, mime_type: "audio/ogg" },
+      from: { id: 1, username: "user1" },
+    }, { ...defaultConfig, briefAgentChatIds: ["123"] }, "company-1");
+
+    expect(ctx.secrets.resolve).toHaveBeenCalledWith(
+      { type: "secret_ref", secretId: TRANSCRIPTION_SECRET_ID, version: "latest" },
+      { companyId: "company-1", configPath: "transcriptionApiKeyRef" },
+    );
   });
 
   it("detects audio messages as audio", async () => {

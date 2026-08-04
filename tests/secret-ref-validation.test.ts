@@ -23,6 +23,17 @@ describe("isValidSecretRef", () => {
     expect(isValidSecretRef({})).toBe(false);
   });
 
+  it("accepts the shared secret_ref object shape the host requires", () => {
+    expect(isValidSecretRef({ type: "secret_ref", secretId: VALID_UUID })).toBe(true);
+    expect(isValidSecretRef({ type: "secret_ref", secretId: VALID_UUID, version: 2 })).toBe(true);
+  });
+
+  it("rejects secret_ref objects with a missing or malformed secretId", () => {
+    expect(isValidSecretRef({ type: "secret_ref" })).toBe(false);
+    expect(isValidSecretRef({ type: "secret_ref", secretId: "not-a-uuid" })).toBe(false);
+    expect(isValidSecretRef({ type: "user_secret_ref", secretId: VALID_UUID })).toBe(false);
+  });
+
   it("rejects non-UUID strings (raw tokens, JSON blobs, malformed UUIDs)", () => {
     expect(isValidSecretRef("not-a-uuid")).toBe(false);
     expect(isValidSecretRef("123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11")).toBe(false);
@@ -66,7 +77,7 @@ describe("validateSecretRefFields", () => {
   it("flags non-UUID telegramBotTokenRef with field-specific guidance", () => {
     const errors = validateSecretRefFields({ telegramBotTokenRef: "123456:raw-bot-token" });
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("telegramBotTokenRef must be the UUID of a Paperclip secret");
+    expect(errors[0]).toContain("telegramBotTokenRef must reference a Paperclip secret");
     expect(errors[0]).toContain("POST /api/companies/{id}/secrets");
   });
 
@@ -77,8 +88,8 @@ describe("validateSecretRefFields", () => {
       transcriptionApiKeyRef: "another-bad-value",
     });
     expect(errors).toHaveLength(2);
-    expect(errors[0]).toContain("paperclipBoardApiTokenRef must be the UUID");
-    expect(errors[1]).toContain("transcriptionApiKeyRef must be the UUID");
+    expect(errors[0]).toContain("paperclipBoardApiTokenRef must reference a Paperclip secret");
+    expect(errors[1]).toContain("transcriptionApiKeyRef must reference a Paperclip secret");
   });
 
   it("truncates long pasted values in error messages to avoid leaking secrets to logs", () => {
@@ -93,5 +104,22 @@ describe("validateSecretRefFields", () => {
       telegramBotTokenRef: { id: VALID_UUID } as unknown as string,
     });
     expect(errors[0]).toContain("<object>");
+  });
+
+  it("accepts secret_ref objects for every field", () => {
+    expect(
+      validateSecretRefFields({
+        telegramBotTokenRef: { type: "secret_ref", secretId: VALID_UUID, version: "latest" },
+        paperclipBoardApiTokenRef: { type: "secret_ref", secretId: VALID_UUID_2 },
+      }),
+    ).toEqual([]);
+  });
+
+  it("flags a secret_ref object whose secretId is not a UUID", () => {
+    const errors = validateSecretRefFields({
+      telegramBotTokenRef: { type: "secret_ref", secretId: "telegram-bot-token" },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("secret_ref with secretId \"telegram-bot\u2026\"");
   });
 });
